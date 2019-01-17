@@ -42,6 +42,7 @@ namespace restapi.Controllers
         [ProducesResponseType(typeof(Timecard), 200)]
         public Timecard Create([FromBody] DocumentResource resource)
         {
+
             var timecard = new Timecard(resource.Resource);
 
             var entered = new Entered() { Resource = resource.Resource };
@@ -53,26 +54,26 @@ namespace restapi.Controllers
             return timecard;
         }
 
-        [HttpDelete("{id}")]
-        [ProducesResponseType(200)]
-        [ProducesResponseType(404)]
-        public IActionResult DeleteLine(string id)
-        {
-            Timecard timecard = Database.Find(id);
+    	[HttpDelete("{id}")]
+    	[ProducesResponseType(200)]
+    	[ProducesResponseType(404)]
+        [ProducesResponseType(typeof(InvalidStateError), 409)]
+    	public IActionResult DeleteLine(string id)
+    	{
+    		Timecard timecard = Database.Find(id);
+    		if (timecard == null)
+    		{
+    			return NotFound();
+    		}
 
-            if (timecard == null)
-            {
-                return NotFound();
-            }
+    		if (timecard.Status != TimecardStatus.Cancelled && timecard.Status != TimecardStatus.Draft)
+    		{
+    			return StatusCode(409, new InvalidStateError() {});
+    		} 
 
-            if (timecard.Status != TimecardStatus.Cancelled && timecard.Status != TimecardStatus.Draft)
-            {
-                    return StatusCode(409, new InvalidStateError() { });
-            }
-
-            Database.Delete(id);
-            return Ok();
-        }
+    		Database.Delete(id);
+    		return Ok();
+    	}
 
         [HttpGet("{id}/lines")]
         [Produces(ContentTypes.TimesheetLines)]
@@ -101,12 +102,17 @@ namespace restapi.Controllers
         [ProducesResponseType(typeof(AnnotatedTimecardLine), 200)]
         [ProducesResponseType(404)]
         [ProducesResponseType(typeof(InvalidStateError), 409)]
-        public IActionResult AddLine(string id, [FromBody] TimecardLine timecardLine)
+        [ProducesResponseType(typeof(InvalidResourceError), 409)]
+        public IActionResult AddLine(string id, [FromBody] TimecardLine timecardLine, [ModelBinder] int resource)
         {
             Timecard timecard = Database.Find(id);
 
             if (timecard != null)
             {
+                if (resource != timecard.Resource)
+                {
+                    return StatusCode(409, new InvalidResourceError() {});
+                }
                 if (timecard.Status != TimecardStatus.Draft)
                 {
                     return StatusCode(409, new InvalidStateError() { });
@@ -122,19 +128,62 @@ namespace restapi.Controllers
             }
         }
 
-        [HttpPost("{timecardId}/lines/{lineId}")]
-        public IActionResult UpdateLine(string timecardId, string lineId, [FromBody] TimecardLine timecardLine)
+    	[HttpPut("{timecardId}/lines/{lineId}")]
+        [Produces(ContentTypes.TimesheetLine)]
+        [ProducesResponseType(typeof(AnnotatedTimecardLine), 200)]
+        [ProducesResponseType(404)]
+        [ProducesResponseType(typeof(InvalidResourceError), 409)]
+    	public IActionResult ReplaceLine(string timecardId, string lineId, [FromBody] TimecardLine timecardLine, [ModelBinder] int resource)
+    	{
+    		Timecard timecard = Database.Find(timecardId);
+
+    		if (timecard == null || !timecard.DoesLineExist(Guid.Parse(lineId)))
+    		{
+    			return NotFound();
+    		}
+            if (timecard.Status != TimecardStatus.Draft)
+            {
+                return StatusCode(409, new InvalidStateError() { });
+            }
+            if (resource != timecard.Resource)
+            {
+                return StatusCode(409, new InvalidResourceError() {});
+            }
+
+            timecard.RemoveLine(Guid.Parse(lineId));
+            var newLine = timecard.AddLine(timecardLine);
+    		
+            return Ok(newLine);
+    	}
+
+        [HttpPatch("{timecardId}/lines/{lineId}")]
+        [Produces(ContentTypes.TimesheetLine)]
+        [ProducesResponseType(typeof(AnnotatedTimecardLine), 200)]
+        [ProducesResponseType(404)]
+        [ProducesResponseType(typeof(InvalidResourceError), 409)]
+        public IActionResult UpdateLine(string timecardId, string lineId, [FromBody] TimecardLine timecardLine, [ModelBinder] int resource)
         {
             Timecard timecard = Database.Find(timecardId);
 
-            if (timecard == null)
+            if (timecard == null || !timecard.DoesLineExist(Guid.Parse(lineId)))
             {
                 return NotFound();
             }
+            if (timecard.Status != TimecardStatus.Draft)
+            {
+                return StatusCode(409, new InvalidStateError() { });
+            }
+            if (resource != timecard.Resource)
+            {
+                return StatusCode(409, new InvalidResourceError() {});
+            }
 
-            return Ok();
+            var updatedLine = timecard.UpdateLine(Guid.Parse(lineId), timecardLine);
+
+            return Ok(updatedLine);
         }
 
+        
         [HttpGet("{id}/transitions")]
         [Produces(ContentTypes.Transitions)]
         [ProducesResponseType(typeof(IEnumerable<Transition>), 200)]
@@ -338,6 +387,7 @@ namespace restapi.Controllers
         [ProducesResponseType(404)]
         [ProducesResponseType(typeof(InvalidStateError), 409)]
         [ProducesResponseType(typeof(EmptyTimecardError), 409)]
+        [ProducesResponseType(typeof(InvalidResourceError), 409)]
         public IActionResult Approve(string id, [FromBody] Approval approval)
         {
             Timecard timecard = Database.Find(id);
@@ -347,6 +397,10 @@ namespace restapi.Controllers
                 if (timecard.Status != TimecardStatus.Submitted)
                 {
                     return StatusCode(409, new InvalidStateError() { });
+                }
+                if (approval.Resource == timecard.Resource)
+                {
+                    return StatusCode(409, new InvalidResourceError() {});
                 }
                 
                 var transition = new Transition(approval, TimecardStatus.Approved);

@@ -4,12 +4,12 @@ namespace restapi.Models
     {
         Timesheets,
 
-        CreateTimesheet,
-        
         Lines,
 
         Transitions,
 
-        Submittal
+        Submittal,
+
+        CreateTimesheet
     }
 }

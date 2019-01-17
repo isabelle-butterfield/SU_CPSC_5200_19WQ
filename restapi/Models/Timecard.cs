@@ -165,5 +165,72 @@ namespace restapi.Models
 
             return annotatedLine;
         }
+
+        public AnnotatedTimecardLine UpdateLine(Guid lineId, TimecardLine timecardLine)
+        {
+            int lineIndex = -1;
+
+            for (int i = 0; i < Lines.Count; i++)
+            {
+                if (Lines[i].UniqueIdentifier == lineId)
+                {
+                    lineIndex = i;        
+                }
+            }
+
+            if(timecardLine.Week > 0)
+            {
+                Lines[lineIndex].Week = timecardLine.Week;
+            }
+            if(timecardLine.Year > 0)
+            {
+                Lines[lineIndex].Year = timecardLine.Year;
+            }
+            if(timecardLine.Day > 0)
+            {
+                Lines[lineIndex].Day = timecardLine.Day;
+            }
+            if(timecardLine.Hours > 0)
+            {
+                Lines[lineIndex].Hours = timecardLine.Hours;
+            }
+            if(timecardLine.Project.Length > 0)
+            {
+                Lines[lineIndex].Project = timecardLine.Project;
+            }
+
+            return Lines[lineIndex];
+        }
+
+        public bool DoesLineExist(Guid lineID)
+        {
+            for(int i = 0; i < Lines.Count; i++)
+            {
+                if (Lines[i].UniqueIdentifier == lineID)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public void RemoveLine(Guid lineID)
+        {
+            int lineIndex = -1;
+
+            for (int i = 0; i < Lines.Count; i++)
+            {
+                if (Lines[i].UniqueIdentifier == lineID)
+                {
+                    lineIndex = i;        
+                }
+            }
+
+            if (lineIndex > -1)
+            {
+                Lines.Remove(Lines[lineIndex]);
+            }
+        }
     }
 }
